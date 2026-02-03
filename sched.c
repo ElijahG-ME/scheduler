@@ -3,6 +3,26 @@
 #include <string.h>
 #include <ctype.h>
 
+
+int workload_echo(char* filename){
+    char line[100]; // more than needed per line for valid input
+    FILE* file;
+    if (file = fopen(filename, "r")){
+
+        while (fgets(line, sizeof(line), file)){
+            printf("%s", line);
+            //if (line[0] != '#'){}
+        }
+
+    }
+    else {
+        printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[]){
 
     // Check if number of args is valid
@@ -17,13 +37,14 @@ int main(int argc, char *argv[]){
     int policy = 0;
 
     // evaluating the first arg
+
     if (strcmp(argv[1], "--policy=FCFS") == 0){ 
         policy = 1;
     }
     else if (strcmp(argv[1], "--policy=RR") == 0){
         policy = 2;
     }
-    else {
+    else if (policy == 0){
         printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
         return 1;
     }
@@ -40,7 +61,7 @@ int main(int argc, char *argv[]){
             
         }
         else {
-            printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
+            printf("    Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
             return 1;
         }
     
@@ -64,9 +85,10 @@ int main(int argc, char *argv[]){
 
     }
     else {
-        printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n\n");
+        printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
         return 1;
     }
 
+    return workload_echo(filename);
 
 }
