@@ -3,24 +3,122 @@
 #include <string.h>
 #include <ctype.h>
 
+struct Process {
+    int PID;
+    int arrival;
+    int cpu_time;
+};
 
-int workload_echo(char* filename){
-    char line[100]; // more than needed per line for valid input
+
+
+int count_file(char* filename){
+    // Count lines in file
     FILE* file;
+    int ignore_line = 0;
+    int count = 0;
+    int last_char = '\n';
     if (file = fopen(filename, "r")){
 
-        while (fgets(line, sizeof(line), file)){
-            printf("%s", line);
-            //if (line[0] != '#'){}
+        int ch = fgetc(file);
+        while (ch != EOF){
+            if (last_char == '\n' && ch == '#') {
+                count -= 1;
+            }
+            if (ch == '\n') {
+                count += 1;
+            }
+
+            last_char = ch;
+            ch = fgetc(file);
         }
 
+        rewind(file);
     }
-    else {
-        printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
-        return 1;
-    }
+    
+    return count;
+}
 
-    return 0;
+void get_processes(struct Process* p, char* filename) {
+    FILE* file;
+    int ignore_line = 0;
+    int process_count = 0;
+    int last_char = '\n';
+    if (file = fopen(filename, "r")){
+
+        int ch = fgetc(file);
+        while (ch != EOF){
+            int val_current_size = 4;
+            char* val = malloc(val_current_size); // begins with size 4, will realloc if necessary
+
+            if (last_char == '\n' && ch == '#') {
+                while ((ch = fgetc(file)) != '\n') {} // skips line if it begins with #      
+                last_char = ch;
+                ch = fgetc(file);
+            }
+
+            if (last_char == '\n' && isdigit(ch)) { // algorithm truly starts here
+                printf("first character: %c\n", ch);
+                // new line of file begins here
+
+                for (int id = 0; id < 3; id++){ // id refers to what variable to assign: pid, arrival, cpu time
+                    int pos = 0; // position of "string" for variable recording
+                    
+
+                    while (ch != ' ' && ch != '\n') {
+                        
+                        if (pos == val_current_size - 1) {  // re-allocating if more size is needed
+                            char* tmp = realloc(val, (val_current_size * 2) + 1);
+                            if (!tmp) { free(val); exit(1);}
+                            val = tmp; 
+                            val_current_size *= 2;
+
+                        }
+
+                        val[pos] = ch;
+                        pos += 1;
+                        //printf("pos: %d ch: %c val: %s\n", pos, ch, val);
+                        ch = fgetc(file);
+                
+
+                    }
+                    val[pos] = '\0';
+                    
+                    
+
+                    switch(id) {
+                        case 0:
+                            int pid = atoi(val);
+                            p[process_count].PID = pid;
+                            printf("pid %d\n", atoi(val));
+                            break;
+                        case 1:
+                            int arr = atoi(val);
+                            p[process_count].arrival = arr;
+                            printf("arr %d\n", atoi(val));
+                            break;
+                        case 2:
+                            int cpu = atoi(val);
+                            p[process_count].cpu_time = cpu;
+                            printf("cpu %d\n", atoi(val));
+                            break;
+                    }
+                    
+                    val[0] = '\0';
+                    if (ch == ' ') {
+                        ch = fgetc(file); 
+                    }
+                }
+                process_count += 1;
+                
+                
+            }
+
+            last_char = ch;
+            ch = fgetc(file);
+        }
+
+        rewind(file);
+    }
 }
 
 int main(int argc, char *argv[]){
@@ -89,6 +187,25 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
-    return workload_echo(filename);
+    int process_count = count_file(filename);
+    printf("%d\n", process_count );
+
+    // array of all processes, unsorted, in order of file
+    struct Process processes[process_count];
+    struct Process *p = processes;
+
+    get_processes(p, filename);
+
+      //----------
+    for (int i = 0; i < 3; i++){
+        printf("\npid: %d ", processes[i].PID);
+        
+        printf("arr: %d ", processes[i].arrival);
+        
+        printf("cpu: %d", processes[i].cpu_time);
+    }
+    //----------
+
+    return 0;
 
 }

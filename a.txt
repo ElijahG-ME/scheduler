@@ -1,0 +1,5 @@
+0
+
+pid: -1727577464 arr: 32764 cpu: 0
+pid: 3 arr: 0 cpu: 1
+pid: 2 arr: 2 cpu: 0
