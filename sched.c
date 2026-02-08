@@ -7,6 +7,11 @@ struct Process {
     int PID;
     int arrival;
     int cpu_time;
+    int time_spent;
+
+    // metrics
+    int first_run;
+    int completion;
 };
 
 
@@ -42,83 +47,115 @@ void get_processes(struct Process* p, char* filename) {
     FILE* file;
     int ignore_line = 0;
     int process_count = 0;
-    int last_char = '\n';
     if (file = fopen(filename, "r")){
+        char ch = fgetc(file); // read first character
 
-        int ch = fgetc(file);
-        while (ch != EOF){
-            int val_current_size = 4;
-            char* val = malloc(val_current_size); // begins with size 4, will realloc if necessary
+        while (ch != EOF) { // loop to run on every line
 
-            if (last_char == '\n' && ch == '#') {
-                while ((ch = fgetc(file)) != '\n') {} // skips line if it begins with #      
-                last_char = ch;
+            // FIRST: Check if line is commented out
+            if (ch == '#') {
+                // if so, skip to end of line:
+                while (ch != '\n') { ch = fgetc(file); }
+                // move to first character of next line
                 ch = fgetc(file);
             }
-
-            if (last_char == '\n' && isdigit(ch)) { // algorithm truly starts here
-                printf("first character: %c\n", ch);
-                // new line of file begins here
-
-                for (int id = 0; id < 3; id++){ // id refers to what variable to assign: pid, arrival, cpu time
-                    int pos = 0; // position of "string" for variable recording
-                    
-
-                    while (ch != ' ' && ch != '\n') {
-                        
-                        if (pos == val_current_size - 1) {  // re-allocating if more size is needed
-                            char* tmp = realloc(val, (val_current_size * 2) + 1);
-                            if (!tmp) { free(val); exit(1);}
-                            val = tmp; 
-                            val_current_size *= 2;
-
-                        }
-
-                        val[pos] = ch;
-                        pos += 1;
-                        //printf("pos: %d ch: %c val: %s\n", pos, ch, val);
-                        ch = fgetc(file);
-                
-
+            else {
+                // On line to be read: write line to string
+                int line_size = 20; char* line = malloc(line_size); // Starts at size 20. Will be increased if needed
+                int index = 0;
+                while (ch != '\n') {
+                    // check if we're full, reallocate to double if so
+                    if (index == line_size) {
+                        line_size *= 2;
+                        line = realloc(line, line_size); // to do later: ensure realloc was successful
                     }
-                    val[pos] = '\0';
-                    
-                    
+                    line[index] = ch;
+                    index += 1;
+                    ch = fgetc(file);
 
-                    switch(id) {
-                        case 0:
-                            int pid = atoi(val);
-                            p[process_count].PID = pid;
-                            printf("pid %d\n", atoi(val));
-                            break;
-                        case 1:
-                            int arr = atoi(val);
-                            p[process_count].arrival = arr;
-                            printf("arr %d\n", atoi(val));
-                            break;
-                        case 2:
-                            int cpu = atoi(val);
-                            p[process_count].cpu_time = cpu;
-                            printf("cpu %d\n", atoi(val));
-                            break;
-                    }
-                    
-                    val[0] = '\0';
-                    if (ch == ' ') {
-                        ch = fgetc(file); 
-                    }
                 }
-                process_count += 1;
-                
+                // Now at end of line
+                line[index] = '\0'; // add null terminator
+
+                // tokenize line at spaces and take values into process
+                p[process_count].PID = atoi(strtok(line, " "));
+                p[process_count].arrival = atoi(strtok(NULL, " "));
+                p[process_count].cpu_time = atoi(strtok(NULL, " "));
+                p[process_count].time_spent = 0;
+
+                // free line for reuse and increment process count, then move to first character of next line
+                free(line);
+                process_count++;
+                ch = fgetc(file);
                 
             }
+        }
+    }
+}
 
-            last_char = ch;
-            ch = fgetc(file);
+void fcfs(struct Process* p, int process_count){
+    // FCFS scheduler:
+    int process_using = -1; // currently running process PID (-1 for none)
+    int processes_completed = 0;
+
+    struct Process queue[process_count];
+    struct Process* queue_p = queue;
+    int in_queue = 0; // index pointing to most recent queue entry
+    int queue_pos = 0; // index pointing to where cpu is currently in the queue
+
+    // fill queue with empty processes (all values -1) for easy pointer reading
+    for (int i = 0; i < process_count; i++) { queue[i].PID = -1; queue[i].arrival = -1;}
+
+    int time = 0;
+
+    while (processes_completed != process_count){
+        // Time begins here
+
+        /*---------
+        printf("Current Queue: ");
+        for (int i = 0; i < process_count; i++){
+            printf("%d | ", queue[i].PID);
+
+        }
+        printf("\n");
+        */
+        
+        // First: Check all processes to see if any arrive at current time. If so, add all to queue
+        for (int i = 0; i < process_count; i++){
+
+            if (p[i].arrival == time) { queue_p[in_queue] = p[i]; in_queue++;}
+            
         }
 
-        rewind(file);
+        // Next: if CPU is free, assign process & begin usage 
+        if (process_using == -1) {
+            if (queue[queue_pos].PID != -1) {
+                process_using = queue[queue_pos].PID; // pos of queue is current job (for easy pointer management)
+                queue[queue_pos].first_run = time;
+                queue[queue_pos].time_spent++;
+            } 
+
+        }
+        else { // otherwise, continue current job
+            queue[queue_pos].time_spent++;
+        }
+
+        // Record
+        printf("time: %d pid: %d\n", time, queue[queue_pos].PID);
+
+        // check if job is done
+        if (queue[queue_pos].time_spent == queue[queue_pos].cpu_time){
+            process_using = -1;
+            queue[queue_pos].completion = time;
+            queue_pos++;
+            processes_completed++;
+        }
+
+        time++;
+
     }
+
+
 }
 
 int main(int argc, char *argv[]){
@@ -188,23 +225,13 @@ int main(int argc, char *argv[]){
     }
 
     int process_count = count_file(filename);
-    printf("%d\n", process_count );
 
     // array of all processes, unsorted, in order of file
     struct Process processes[process_count];
     struct Process *p = processes;
 
     get_processes(p, filename);
-
-      //----------
-    for (int i = 0; i < 3; i++){
-        printf("\npid: %d ", processes[i].PID);
-        
-        printf("arr: %d ", processes[i].arrival);
-        
-        printf("cpu: %d", processes[i].cpu_time);
-    }
-    //----------
+    fcfs(p, process_count);
 
     return 0;
 
