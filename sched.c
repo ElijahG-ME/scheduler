@@ -16,7 +16,7 @@ struct Process {
 
 
 
-int count_file(char* filename){
+int count_file_lines(char* filename){
     // Count lines in file
     FILE* file;
     int ignore_line = 0;
@@ -93,6 +93,28 @@ void get_processes(struct Process* p, char* filename) {
     }
 }
 
+void compute_stats(struct Process* queue, int process_count, int context_switches){
+    float total_TAT = 0;
+    float total_RESP = 0;
+
+    
+    for (int i = 0; i < process_count; i++){
+        int id = queue[i].PID;
+        int first_run = queue[i].first_run;
+        int completion = queue[i].completion;
+        int turnaround = completion - queue[i].arrival;
+        int response = first_run - queue[i].arrival;
+
+        total_TAT += turnaround;
+        total_RESP += response;
+        
+        printf("P%d: first run=%d completion=%d TAT=%d RESP=%d\n", id, first_run, completion, turnaround, response);
+        
+    }
+    printf("System: ctx_switches=%d, avgTAT=%.3f, avgRESP=%.3f", context_switches, (total_TAT/process_count), (total_RESP/process_count));
+
+}
+
 void fcfs(struct Process* p, int process_count){
     // FCFS scheduler:
     int process_using = -1; // currently running process PID (-1 for none)
@@ -103,6 +125,16 @@ void fcfs(struct Process* p, int process_count){
     int in_queue = 0; // index pointing to most recent queue entry
     int queue_pos = 0; // index pointing to where cpu is currently in the queue
 
+    // trackers
+    int context_switches = 0;
+    int t_size = 30;
+    char* time_elapsed = malloc(t_size); // Begins at size 30, will be increased if needed
+    char* run_elapsed = malloc(t_size); // todo: ensure malloc is successful
+    time_elapsed[0] = '\0';
+    run_elapsed[0] = '\0';
+    strcat(time_elapsed, "time:");
+    strcat(run_elapsed, "run :");
+
     // fill queue with empty processes (all values -1) for easy pointer reading
     for (int i = 0; i < process_count; i++) { queue[i].PID = -1; queue[i].arrival = -1;}
 
@@ -110,15 +142,6 @@ void fcfs(struct Process* p, int process_count){
 
     while (processes_completed != process_count){
         // Time begins here
-
-        /*---------
-        printf("Current Queue: ");
-        for (int i = 0; i < process_count; i++){
-            printf("%d | ", queue[i].PID);
-
-        }
-        printf("\n");
-        */
         
         // First: Check all processes to see if any arrive at current time. If so, add all to queue
         for (int i = 0; i < process_count; i++){
@@ -140,21 +163,43 @@ void fcfs(struct Process* p, int process_count){
             queue[queue_pos].time_spent++;
         }
 
-        // Record
-        printf("time: %d pid: %d\n", time, queue[queue_pos].PID);
+        // Record Info
+
+        // First: Check if re-allocation needed
+        if ((t_size - strlen(time_elapsed) <= 10) || t_size - strlen(run_elapsed) <= 10  ){ // triggers when characters approach end of allocation (within the last 10 characters)
+            t_size *= 2; // doubles size and continues
+            time_elapsed = realloc(time_elapsed, t_size); 
+            run_elapsed = realloc(run_elapsed, t_size);
+        }
+
+        // Second: append to string this cycle's info
+        sprintf(time_elapsed + strlen(time_elapsed), " %d", time);
+        queue[queue_pos].PID == -1 ? sprintf(run_elapsed + strlen(run_elapsed), " %s", "-") : sprintf(run_elapsed + strlen(run_elapsed), " %d", queue[queue_pos].PID);
+        
+        
+
 
         // check if job is done
-        if (queue[queue_pos].time_spent == queue[queue_pos].cpu_time){
+        if (queue[queue_pos].PID != -1 && (queue[queue_pos].time_spent == queue[queue_pos].cpu_time)){
             process_using = -1;
-            queue[queue_pos].completion = time;
+            queue[queue_pos].completion = time+1;
             queue_pos++;
             processes_completed++;
+            // if we are not at the end of the queue AND next in queue is not -1 (empty), context switch performed
+            if (queue_pos+1 != process_count && queue[queue_pos+1].PID != -1) {
+                context_switches += 1;
+            }
         }
 
         time++;
 
     }
 
+    printf("%s\n", time_elapsed);
+    printf("%s\n", run_elapsed);
+    compute_stats(queue, process_count, context_switches);
+    free(time_elapsed);
+    free(run_elapsed);
 
 }
 
@@ -224,7 +269,7 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
-    int process_count = count_file(filename);
+    int process_count = count_file_lines(filename);
 
     // array of all processes, unsorted, in order of file
     struct Process processes[process_count];
@@ -232,6 +277,8 @@ int main(int argc, char *argv[]){
 
     get_processes(p, filename);
     fcfs(p, process_count);
+
+    free(filename);
 
     return 0;
 
