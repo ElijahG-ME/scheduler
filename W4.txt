@@ -1,6 +1,6 @@
-# CMPT360 A2 — Workload W3 (RR FIFO rotation demo)
+# CMPT360 A2 — Workload W4 (RR FIFO rotation demo)
 # Format: PID ARRIVAL CPU_TIME
 0 0 1
-1 2 4
+1 4 4
 2 4 1
 3 4 3

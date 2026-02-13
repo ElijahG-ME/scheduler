@@ -19,27 +19,22 @@ struct Process {
 int count_file_lines(char* filename){
     // Count lines in file
     FILE* file;
-    int ignore_line = 0;
     int count = 0;
     int last_char = '\n';
     if (file = fopen(filename, "r")){
 
-        int ch = fgetc(file);
+        char ch = fgetc(file);
         while (ch != EOF){
-            if (last_char == '\n' && ch == '#') {
-                count -= 1;
-            }
-            if (ch == '\n') {
+            if (last_char == '\n' && isdigit(ch)) {
                 count += 1;
             }
-
             last_char = ch;
             ch = fgetc(file);
         }
 
         rewind(file);
+        fclose(file);
     }
-    
     return count;
 }
 
@@ -47,6 +42,7 @@ void get_processes(struct Process* p, char* filename) {
     FILE* file;
     int ignore_line = 0;
     int process_count = 0;
+    
     if (file = fopen(filename, "r")){
         char ch = fgetc(file); // read first character
 
@@ -63,7 +59,7 @@ void get_processes(struct Process* p, char* filename) {
                 // On line to be read: write line to string
                 int line_size = 20; char* line = malloc(line_size); // Starts at size 20. Will be increased if needed
                 int index = 0;
-                while (ch != '\n') {
+                while (ch != '\n' && ch != -1) {
                     // check if we're full, reallocate to double if so
                     if (index == line_size) {
                         line_size *= 2;
@@ -111,7 +107,7 @@ void compute_stats(struct Process* queue, int process_count, int context_switche
         printf("P%d: first run=%d completion=%d TAT=%d RESP=%d\n", id, first_run, completion, turnaround, response);
         
     }
-    printf("System: ctx_switches=%d, avgTAT=%.3f, avgRESP=%.3f", context_switches, (total_TAT/process_count), (total_RESP/process_count));
+    printf("System: ctx_switches=%d, avgTAT=%.3f, avgRESP=%.3f\n", context_switches, (total_TAT/process_count), (total_RESP/process_count));
 
 }
 
@@ -241,7 +237,7 @@ int main(int argc, char *argv[]){
             
         }
         else {
-            printf("    Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
+            printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
             return 1;
         }
     
@@ -268,14 +264,15 @@ int main(int argc, char *argv[]){
         printf("Usage: ./sched --policy=FCFS|RR [--quantum=N] --in=FILE\n");
         return 1;
     }
-
+    
     int process_count = count_file_lines(filename);
+
 
     // array of all processes, unsorted, in order of file
     struct Process processes[process_count];
     struct Process *p = processes;
 
-    get_processes(p, filename);
+    get_processes(p, filename); 
     fcfs(p, process_count);
 
     free(filename);
