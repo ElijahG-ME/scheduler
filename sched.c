@@ -12,6 +12,7 @@ struct Process {
     // metrics
     int first_run;
     int completion;
+    int order; // used only for RR output print syntax, not real metric
 };
 
 
@@ -93,18 +94,22 @@ void compute_stats(struct Process* queue, int process_count, int context_switche
     float total_TAT = 0;
     float total_RESP = 0;
 
+
     
     for (int i = 0; i < process_count; i++){
-        int id = queue[i].PID;
-        int first_run = queue[i].first_run;
-        int completion = queue[i].completion;
-        int turnaround = completion - queue[i].arrival;
-        int response = first_run - queue[i].arrival;
+        if (queue[i].PID != -1) {
+            int id = queue[i].PID;
+            int first_run = queue[i].first_run;
+            int completion = queue[i].completion;
+            int turnaround = completion - queue[i].arrival;
+            int response = first_run - queue[i].arrival;
 
-        total_TAT += turnaround;
-        total_RESP += response;
+            total_TAT += turnaround;
+            total_RESP += response;
+            
+            printf("P%d: first run=%d completion=%d TAT=%d RESP=%d\n", id, first_run, completion, turnaround, response);
+        }
         
-        printf("P%d: first run=%d completion=%d TAT=%d RESP=%d\n", id, first_run, completion, turnaround, response);
         
     }
     printf("System: ctx_switches=%d, avgTAT=%.3f, avgRESP=%.3f\n", context_switches, (total_TAT/process_count), (total_RESP/process_count));
@@ -122,7 +127,7 @@ void fcfs(struct Process* p, int process_count){
     int queue_pos = 0; // index pointing to where cpu is currently in the queue
 
     // trackers
-    int context_switches = 0;
+    int context_switches = process_count - 1;
     int t_size = 30;
     char* time_elapsed = malloc(t_size); // Begins at size 30, will be increased if needed
     char* run_elapsed = malloc(t_size); // todo: ensure malloc is successful
@@ -142,7 +147,7 @@ void fcfs(struct Process* p, int process_count){
         // First: Check all processes to see if any arrive at current time. If so, add all to queue
         for (int i = 0; i < process_count; i++){
 
-            if (p[i].arrival == time) { queue_p[in_queue] = p[i]; in_queue++;}
+            if (p[i].arrival == time) { queue_p[in_queue++] = p[i];}
             
         }
 
@@ -181,10 +186,6 @@ void fcfs(struct Process* p, int process_count){
             queue[queue_pos].completion = time+1;
             queue_pos++;
             processes_completed++;
-            // if we are not at the end of the queue AND next in queue is not -1 (empty), context switch performed
-            if (queue_pos+1 != process_count && queue[queue_pos+1].PID != -1) {
-                context_switches += 1;
-            }
         }
 
         time++;
@@ -198,6 +199,132 @@ void fcfs(struct Process* p, int process_count){
     free(run_elapsed);
 
 }
+
+void remove_process(struct Process* queue_p, int queue_end){
+    for (int i = 0; i < queue_end; i++){
+        queue_p[i] = queue_p[i+1];
+    }
+    queue_p[queue_end-1].PID = -1;
+
+}
+
+void push_to_back(struct Process* queue_p, int queue_end){
+    struct Process front = queue_p[0];
+    for (int i = 0; i < queue_end; i++){
+        queue_p[i] = queue_p[i+1];
+    }
+    queue_p[queue_end] = front;
+}
+
+void RR(struct Process* p, int quantum, int process_count){
+    // Round Robin scheduler:
+    int process_using = -1; // currently running process PID (-1 for none)
+    int processes_completed = 0;
+    int order = 0; // used to organize metric output syntax (allows processes to be printed in order of lowest first_run first)
+
+    struct Process queue[process_count];
+    struct Process* queue_p = queue;
+    int queue_end = 0; // index pointing to 1 past most recent queue entry
+    int process_time = 0; // amount of time process has ran for (measured against quantum)
+    int in_queue = 0;
+    struct Process finished_queue[process_count];
+
+    // trackers
+    int context_switches = 0;
+    int t_size = 30;
+    char* time_elapsed = malloc(t_size); // Begins at size 30, will be increased if needed
+    char* run_elapsed = malloc(t_size); // todo: ensure malloc is successful
+    time_elapsed[0] = '\0';
+    run_elapsed[0] = '\0';
+    strcat(time_elapsed, "time:");
+    strcat(run_elapsed, "run :");
+
+    // fill queue with empty processes (all values -1) for easy pointer reading
+    for (int i = 0; i < process_count; i++) { queue[i].PID = -1; queue[i].arrival = -1;}
+
+    int time = 0;
+
+    while (processes_completed != process_count){
+        // Time begins here
+        
+        // First: Check all processes to see if any arrive at current time. If so, add all to queue
+        for (int i = 0; i < process_count; i++){
+
+            if (p[i].arrival == time) { 
+                queue_p[queue_end++] = p[i]; 
+                in_queue++; 
+                queue[i].first_run = -1;
+                queue[i].order = order++;
+            }
+            
+        }
+
+        // Next: Assign process (if empty) & begin usage
+        if (process_using == -1) {
+            if (queue[0].PID != -1) {
+                process_using = queue[0].PID; 
+                if (queue[0].first_run == -1) { queue[0].first_run = time; }
+                queue[0].time_spent++; process_time++; // Trackers
+            } 
+
+        }
+        else { // otherwise, continue current job
+            queue[0].time_spent++; process_time++;
+            process_using = queue[0].PID; 
+            if (queue[0].first_run == -1) { queue[0].first_run = time; }
+            
+        }
+
+        
+        // Record Info ----
+
+        // First: Check if re-allocation needed
+        if ((t_size - strlen(time_elapsed) <= 10) || t_size - strlen(run_elapsed) <= 10  ){ // triggers when characters approach end of allocation (within the last 10 characters)
+            t_size *= 2; // doubles size and continues
+            time_elapsed = realloc(time_elapsed, t_size); 
+            run_elapsed = realloc(run_elapsed, t_size);
+        }
+
+        // Second: append to string this cycle's info
+        sprintf(time_elapsed + strlen(time_elapsed), " %d", time);
+        queue[0].PID == -1 ? sprintf(run_elapsed + strlen(run_elapsed), " %s", "-") : sprintf(run_elapsed + strlen(run_elapsed), " %d", queue[0].PID);
+        
+        //-----------------
+
+        
+        
+
+        // check if job is done
+        if (queue[0].PID != -1 && (queue[0].time_spent == queue[0].cpu_time)){
+            process_using = -1;
+            queue[0].completion = time+1;
+            finished_queue[queue[0].order] = queue[0];
+            processes_completed++; 
+            remove_process(queue_p, queue_end--);
+            process_time = 0; in_queue--;
+            if (processes_completed != process_count) { context_switches++; }
+
+        }
+
+
+        // Next: Check if quantum is up
+        if (process_time == quantum) {
+            if (in_queue != 1) { push_to_back(queue_p, queue_end-1); context_switches++; } // No need to push everything back if the queue is one item long
+            process_time = 0; 
+        }
+    
+        time++;
+
+    }
+
+    printf("%s\n", time_elapsed);
+    printf("%s\n", run_elapsed);
+    compute_stats(finished_queue, process_count, context_switches);
+    free(time_elapsed);
+    free(run_elapsed);
+
+}
+
 
 int main(int argc, char *argv[]){
 
@@ -273,7 +400,15 @@ int main(int argc, char *argv[]){
     struct Process *p = processes;
 
     get_processes(p, filename); 
-    fcfs(p, process_count);
+    switch(policy) {
+        case 1:
+            fcfs(p, process_count);
+        break;
+
+        case 2:
+            RR(p, quantum, process_count);
+        break;
+    }
 
     free(filename);
 
