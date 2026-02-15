@@ -1,6 +1,6 @@
 # Elijah Greig
 # 3128908
-# Submitted on: 
+# Submitted on: Feb 15 2025
 # File: Makefile | Makefile for sched application
 
 GCC= gcc
@@ -9,14 +9,14 @@ VFLAGS = --leak-check=yes
 
 .PHONY: userclean clean valgrind
 
-sched: sched.o
-	$(GCC) $(CFLAGS) -o $@ $^ 
+all: sched.o parse.o queue.o
+	$(GCC) $(CFLAGS) -o sched $^ 
 
 %.o: %.c
 	$(GCC) -c $<
 
 valgrind: 
-	echo "Test username" | valgrind $(VFLAGS) ./sched
+	valgrind $(VFLAGS) ./sched --policy=FCFS --in=W1.txt
 
 clean: 
 	rm -f *.o sched

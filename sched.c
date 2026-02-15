@@ -1,100 +1,22 @@
+// Elijah Greig
+// 3128908
+// Submitted on: Feb 15 2025
+// File: sched.c | Source file for sched application
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "parse.h"
+#include "queue.h"
+#include "process.h"
 
-struct Process {
-    int PID;
-    int arrival;
-    int cpu_time;
-    int time_spent;
-
-    // metrics
-    int first_run;
-    int completion;
-    int order; // used only for RR output print syntax, not real metric
-};
-
-
-
-int count_file_lines(char* filename){
-    // Count lines in file
-    FILE* file;
-    int count = 0;
-    int last_char = '\n';
-    if (file = fopen(filename, "r")){
-
-        char ch = fgetc(file);
-        while (ch != EOF){
-            if (last_char == '\n' && isdigit(ch)) {
-                count += 1;
-            }
-            last_char = ch;
-            ch = fgetc(file);
-        }
-
-        rewind(file);
-        fclose(file);
-    }
-    return count;
-}
-
-void get_processes(struct Process* p, char* filename) {
-    FILE* file;
-    int ignore_line = 0;
-    int process_count = 0;
-    
-    if (file = fopen(filename, "r")){
-        char ch = fgetc(file); // read first character
-
-        while (ch != EOF) { // loop to run on every line
-
-            // FIRST: Check if line is commented out
-            if (ch == '#') {
-                // if so, skip to end of line:
-                while (ch != '\n') { ch = fgetc(file); }
-                // move to first character of next line
-                ch = fgetc(file);
-            }
-            else {
-                // On line to be read: write line to string
-                int line_size = 20; char* line = malloc(line_size); // Starts at size 20. Will be increased if needed
-                int index = 0;
-                while (ch != '\n' && ch != -1) {
-                    // check if we're full, reallocate to double if so
-                    if (index == line_size) {
-                        line_size *= 2;
-                        line = realloc(line, line_size); // to do later: ensure realloc was successful
-                    }
-                    line[index] = ch;
-                    index += 1;
-                    ch = fgetc(file);
-
-                }
-                // Now at end of line
-                line[index] = '\0'; // add null terminator
-
-                // tokenize line at spaces and take values into process
-                p[process_count].PID = atoi(strtok(line, " "));
-                p[process_count].arrival = atoi(strtok(NULL, " "));
-                p[process_count].cpu_time = atoi(strtok(NULL, " "));
-                p[process_count].time_spent = 0;
-
-                // free line for reuse and increment process count, then move to first character of next line
-                free(line);
-                process_count++;
-                ch = fgetc(file);
-                
-            }
-        }
-    }
-}
 
 void compute_stats(struct Process* queue, int process_count, int context_switches){
+    // Function to compute and print out process & scheduler stats
+    // Arguments: array of processes (queue), process_count, context_switches
     float total_TAT = 0;
     float total_RESP = 0;
-
-
     
     for (int i = 0; i < process_count; i++){
         if (queue[i].PID != -1) {
@@ -118,6 +40,8 @@ void compute_stats(struct Process* queue, int process_count, int context_switche
 
 void fcfs(struct Process* p, int process_count){
     // FCFS scheduler:
+    // Arguments: pointer to array of processes (p), process count
+
     int process_using = -1; // currently running process PID (-1 for none)
     int processes_completed = 0;
 
@@ -127,10 +51,11 @@ void fcfs(struct Process* p, int process_count){
     int queue_pos = 0; // index pointing to where cpu is currently in the queue
 
     // trackers
-    int context_switches = process_count - 1;
+    int context_switches = process_count - 1; // in FCFS, context switches is always 1 less than total number of processes
     int t_size = 30;
-    char* time_elapsed = malloc(t_size); // Begins at size 30, will be increased if needed
-    char* run_elapsed = malloc(t_size); // todo: ensure malloc is successful
+    char* time_elapsed = malloc(t_size); // Strings to hold scheduler gantt chart info
+    char* run_elapsed = malloc(t_size); // Begins at size 30, will be increased if needed
+    if (!time_elapsed || !run_elapsed) { printf("Allocation failed\n"); return;}
     time_elapsed[0] = '\0';
     run_elapsed[0] = '\0';
     strcat(time_elapsed, "time:");
@@ -171,6 +96,8 @@ void fcfs(struct Process* p, int process_count){
             t_size *= 2; // doubles size and continues
             time_elapsed = realloc(time_elapsed, t_size); 
             run_elapsed = realloc(run_elapsed, t_size);
+            
+            if (!time_elapsed || !run_elapsed) { printf("Allocation failed\n"); return;}
         }
 
         // Second: append to string this cycle's info
@@ -183,15 +110,15 @@ void fcfs(struct Process* p, int process_count){
         // check if job is done
         if (queue[queue_pos].PID != -1 && (queue[queue_pos].time_spent == queue[queue_pos].cpu_time)){
             process_using = -1;
-            queue[queue_pos].completion = time+1;
-            queue_pos++;
-            processes_completed++;
+            queue[queue_pos].completion = time+1; // completion time recorded to process data
+            queue_pos++; processes_completed++;
         }
 
         time++;
 
     }
 
+    // Print stats and free allocations
     printf("%s\n", time_elapsed);
     printf("%s\n", run_elapsed);
     compute_stats(queue, process_count, context_switches);
@@ -200,24 +127,10 @@ void fcfs(struct Process* p, int process_count){
 
 }
 
-void remove_process(struct Process* queue_p, int queue_end){
-    for (int i = 0; i < queue_end; i++){
-        queue_p[i] = queue_p[i+1];
-    }
-    queue_p[queue_end-1].PID = -1;
-
-}
-
-void push_to_back(struct Process* queue_p, int queue_end){
-    struct Process front = queue_p[0];
-    for (int i = 0; i < queue_end; i++){
-        queue_p[i] = queue_p[i+1];
-    }
-    queue_p[queue_end] = front;
-}
-
 void RR(struct Process* p, int quantum, int process_count){
     // Round Robin scheduler:
+    // Arguments: pointer to array of processes (p), quantum, process count
+
     int process_using = -1; // currently running process PID (-1 for none)
     int processes_completed = 0;
     int order = 0; // used to organize metric output syntax (allows processes to be printed in order of lowest first_run first)
@@ -226,14 +139,15 @@ void RR(struct Process* p, int quantum, int process_count){
     struct Process* queue_p = queue;
     int queue_end = 0; // index pointing to 1 past most recent queue entry
     int process_time = 0; // amount of time process has ran for (measured against quantum)
-    int in_queue = 0;
-    struct Process finished_queue[process_count];
+    int in_queue = 0; // amount of processes currently in queue;
+    struct Process finished_queue[process_count]; // array to hold processes that have finished running (for data output)
 
     // trackers
     int context_switches = 0;
     int t_size = 30;
     char* time_elapsed = malloc(t_size); // Begins at size 30, will be increased if needed
-    char* run_elapsed = malloc(t_size); // todo: ensure malloc is successful
+    char* run_elapsed = malloc(t_size); 
+    if (!time_elapsed || !run_elapsed) { printf("Allocation failed\n"); return;}
     time_elapsed[0] = '\0';
     run_elapsed[0] = '\0';
     strcat(time_elapsed, "time:");
@@ -253,8 +167,8 @@ void RR(struct Process* p, int quantum, int process_count){
             if (p[i].arrival == time) { 
                 queue_p[queue_end++] = p[i]; 
                 in_queue++; 
-                queue[i].first_run = -1;
-                queue[i].order = order++;
+                queue[i].first_run = -1; // First run is assigned -1 until it runs, at which point it changes to current time
+                queue[i].order = order++; // tracking order of arrival for output syntax, not related to scheduler statistics
             }
             
         }
@@ -263,7 +177,7 @@ void RR(struct Process* p, int quantum, int process_count){
         if (process_using == -1) {
             if (queue[0].PID != -1) {
                 process_using = queue[0].PID; 
-                if (queue[0].first_run == -1) { queue[0].first_run = time; }
+                if (queue[0].first_run == -1) { queue[0].first_run = time; } // assigns "first run" statistic if not already assigned
                 queue[0].time_spent++; process_time++; // Trackers
             } 
 
@@ -271,7 +185,7 @@ void RR(struct Process* p, int quantum, int process_count){
         else { // otherwise, continue current job
             queue[0].time_spent++; process_time++;
             process_using = queue[0].PID; 
-            if (queue[0].first_run == -1) { queue[0].first_run = time; }
+            if (queue[0].first_run == -1) { queue[0].first_run = time; } // assigns "first run" statistic if not already assigned
             
         }
 
@@ -283,6 +197,8 @@ void RR(struct Process* p, int quantum, int process_count){
             t_size *= 2; // doubles size and continues
             time_elapsed = realloc(time_elapsed, t_size); 
             run_elapsed = realloc(run_elapsed, t_size);
+            
+            if (!time_elapsed || !run_elapsed) { printf("Allocation failed\n"); return;}
         }
 
         // Second: append to string this cycle's info
@@ -290,8 +206,6 @@ void RR(struct Process* p, int quantum, int process_count){
         queue[0].PID == -1 ? sprintf(run_elapsed + strlen(run_elapsed), " %s", "-") : sprintf(run_elapsed + strlen(run_elapsed), " %d", queue[0].PID);
         
         //-----------------
-
-        
         
 
         // check if job is done
@@ -392,7 +306,11 @@ int main(int argc, char *argv[]){
         return 1;
     }
     
-    int process_count = count_file_lines(filename);
+    int process_count = count_file_lines(filename); // count number of processes in the file
+    if (process_count == -1) { // -1 is returned only if the file does not exist
+        printf("File not found\n"); 
+        return 1;
+    }
 
 
     // array of all processes, unsorted, in order of file
@@ -400,6 +318,7 @@ int main(int argc, char *argv[]){
     struct Process *p = processes;
 
     get_processes(p, filename); 
+
     switch(policy) {
         case 1:
             fcfs(p, process_count);
@@ -411,7 +330,6 @@ int main(int argc, char *argv[]){
     }
 
     free(filename);
-
     return 0;
 
 }
